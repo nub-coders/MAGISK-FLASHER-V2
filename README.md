@@ -31,7 +31,7 @@ Install Python dependencies:
 pip install -r requirements.txt
 ```
 
-> **Bot mode only** requires `telethon`, `FastTelethonhelper`, `tgcrypto`, `cryptg`.  
+> **Bot mode only** requires `kurigram`, `tgcrypto`, `requests`.  
 > Local CLI mode works with **zero extra dependencies** beyond the Python standard library.
 
 ---

@@ -265,29 +265,33 @@ def run_interactive_menu():
 #  Telegram bot
 # ─────────────────────────────────────────────
 def run_bot():
-    """Import telethon and start the Telegram bot."""
+    """Import pyrogram and start the Telegram bot."""
     try:
-        from telethon.sync import TelegramClient, events
-        from telethon import Button
-        from FastTelethonhelper import fast_download
+        from pyrogram import Client, filters, idle
+        from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     except ImportError as e:
         print(f"  [!] Missing dependency for bot mode: {e}")
-        print("      Run: pip install telethon FastTelethonhelper")
+        print("      Run: pip install kurigram (or pyrogram)")
         sys.exit(1)
 
     from config import API_ID, API_HASH, BOT_TOKEN
 
-    client = TelegramClient(None, API_ID, API_HASH).start(bot_token=BOT_TOKEN)
-    group_user_ids = {}
+    client = Client(
+        "bot",
+        api_id=API_ID,
+        api_hash=API_HASH,
+        bot_token=BOT_TOKEN,
+        in_memory=True
+    )
     user_download_directories = {}
     bot_start_time = time.time()
 
     print("\n  Starting Telegram bot...\n")
 
     # ── /start ──────────────────────────────────
-    @client.on(events.NewMessage(pattern='/start'))
-    async def start(event):
-        await event.reply(
+    @client.on_message(filters.command("start") & filters.private)
+    async def start(cli, message):
+        await message.reply_text(
             "Welcome to the Magisk Boot Patcher Bot!\n\n"
             "This bot can help you patch and flash Magisk to your boot.img file.\n\n"
             "Supported Commands:\n"
@@ -296,7 +300,7 @@ def run_bot():
             "For any assistance or issues, you can contact our support:\n"
             "Telegram Support group: @nub_coder_s\n"
         )
-        user_id   = str(event.sender_id)
+        user_id   = str(message.from_user.id)
         user_path = os.path.join(cpath, user_id)
         try:
             shutil.rmtree(user_path)
@@ -321,10 +325,10 @@ def run_bot():
                                 print(f"  [Cleanup] Error removing {dir_path}: {e}")
 
     # ── /ping ────────────────────────────────────
-    @client.on(events.NewMessage(pattern='/ping'))
-    async def ping(event):
+    @client.on_message(filters.command("ping"))
+    async def ping(cli, message):
         t0  = time.time()
-        msg = await event.respond("Pong!")
+        msg = await message.reply_text("Pong!")
         ms  = round((time.time() - t0) * 1000)
 
         elapsed = int(time.time() - bot_start_time)
@@ -338,12 +342,12 @@ def run_bot():
         if days:
             uptime = f"{days}d {uptime}"
 
-        await msg.edit(f"🏓 Pong! `{ms} ms`\n⏱️ Uptime: `{uptime}`")
+        await msg.edit_text(f"🏓 Pong! `{ms} ms`\n⏱️ Uptime: `{uptime}`")
 
     # ── /help ────────────────────────────────────
-    @client.on(events.NewMessage(pattern='/help'))
-    async def help_command(event):
-        await event.respond(
+    @client.on_message(filters.command("help"))
+    async def help_command(cli, message):
+        await message.reply_text(
             "Welcome to the Magisk Flasher Bot!\n\n"
             "This bot can help you patch and flash Magisk to your boot.img file.\n\n"
             "Supported Commands:\n"
@@ -364,39 +368,35 @@ def run_bot():
         for i in range(0, len(versions), 2):
             row = []
             label1, key1 = versions[i]
-            row.append(Button.inline(label1, f"dl:{key1}".encode()))
+            row.append(InlineKeyboardButton(label1, callback_data=f"dl:{key1}"))
             if i + 1 < len(versions):
                 label2, key2 = versions[i + 1]
-                row.append(Button.inline(label2, f"dl:{key2}".encode()))
+                row.append(InlineKeyboardButton(label2, callback_data=f"dl:{key2}"))
             keyboard.append(row)
-        keyboard.append([Button.inline("Cancel", b"cancel")])
-        return keyboard, versions
+        keyboard.append([InlineKeyboardButton("Cancel", callback_data="cancel")])
+        return InlineKeyboardMarkup(keyboard), versions
 
     # ── File upload handler ──────────────────────
-    @client.on(events.NewMessage(func=lambda e: e.document and e.is_private))
-    async def download_and_rename_file(event):
-        nonlocal group_user_ids
-        user = await event.get_sender()
-        user_id = user.id
-        group = await client.get_entity("@nub_coder_s")
+    @client.on_message(filters.document & filters.private)
+    async def download_and_rename_file(cli, message):
+        user_id = message.from_user.id
 
-        async for member in client.iter_participants(group):
-            group_user_ids[member.id] = True
-
-        if user_id not in group_user_ids:
-            btn = Button.url("Join", "https://t.me/nub_coder_s")
-            await event.respond(
+        try:
+            member = await cli.get_chat_member("@nub_coder_s", user_id)
+            if member.status.name in ["KICKED", "LEFT", "BANNED"]:
+                raise Exception("Not a valid member")
+        except Exception:
+            btn = InlineKeyboardMarkup([[InlineKeyboardButton("Join", url="https://t.me/nub_coder_s")]])
+            await message.reply_text(
                 "You need to join @nub_coder_s in order to use this bot.\n\nClick below to Join!",
-                buttons=btn
+                reply_markup=btn
             )
             return
-        group_user_ids.clear()
 
-        if event.file.size >= 200_000_000:
-            await event.reply('please send a file less than 200MB')
+        if message.document.file_size >= 200_000_000:
+            await message.reply_text('please send a file less than 200MB')
             return
 
-        user_id       = event.sender_id
         user_directory = os.path.join(cpath, str(user_id))
         try:
             shutil.rmtree(user_directory)
@@ -404,37 +404,37 @@ def run_bot():
             pass
         os.makedirs(user_directory, exist_ok=True)
 
-        gg = await event.reply("Downloading file, please wait for some time")
-        await client.download_media(event.document, f"{user_directory}/boot.img")
+        gg = await message.reply_text("Downloading file, please wait for some time")
+        await message.download(file_name=f"{user_directory}/boot.img")
 
         keyboard, _ = await _build_keyboard()
         if not keyboard:
             await gg.delete()
-            await event.respond("⚠️ Could not fetch Magisk versions from GitHub. Please try again later.")
+            await message.reply_text("⚠️ Could not fetch Magisk versions from GitHub. Please try again later.")
             return
 
         user_download_directories[user_id] = user_directory
         await gg.delete()
-        await event.respond("Please select a Magisk version:\nLatest version recommended", buttons=keyboard)
+        await message.reply_text("Please select a Magisk version:\nLatest version recommended", reply_markup=keyboard)
 
     # ── /root handler ────────────────────────────
-    @client.on(events.NewMessage(pattern='/root'))
-    async def handle_root(event):
-        if not (event.is_reply and event.message.reply_to_msg_id):
-            await event.respond('Please reply to a file with the /root command.')
+    @client.on_message(filters.command("root"))
+    async def handle_root(cli, message):
+        if not message.reply_to_message:
+            await message.reply_text('Please reply to a file with the /root command.')
             return
 
-        replied_message = await event.get_reply_message()
+        replied_message = message.reply_to_message
         if not replied_message.document:
-            await event.respond('The replied message does not contain a document.')
+            await message.reply_text('The replied message does not contain a document.')
             return
 
         document = replied_message.document
-        if document.size >= 200_000_000:
-            await event.reply('Please send a file less than 200MB.')
+        if document.file_size >= 200_000_000:
+            await message.reply_text('Please send a file less than 200MB.')
             return
 
-        user_id        = event.sender_id
+        user_id        = message.from_user.id
         user_directory = os.path.join(cpath, str(user_id))
         try:
             shutil.rmtree(user_directory)
@@ -442,27 +442,34 @@ def run_bot():
             pass
         os.makedirs(user_directory, exist_ok=True)
 
-        gg = await event.respond("Downloading file, please wait for some time")
-        await client.download_media(document, f"{user_directory}/boot.img")
+        gg = await message.reply_text("Downloading file, please wait for some time")
+        await replied_message.download(file_name=f"{user_directory}/boot.img")
 
         keyboard, _ = await _build_keyboard()
         if not keyboard:
             await gg.delete()
-            await event.respond("⚠️ Could not fetch Magisk versions from GitHub. Please try again later.")
+            await message.reply_text("⚠️ Could not fetch Magisk versions from GitHub. Please try again later.")
             return
 
         user_download_directories[user_id] = user_directory
         await gg.delete()
-        await event.reply("Please select a Magisk version:", buttons=keyboard)
+        await message.reply_text("Please select a Magisk version:", reply_markup=keyboard)
 
     # ── Callback: version selected ───────────────
-    @client.on(events.CallbackQuery())
-    async def handle_magisk_version(event):
-        user_id        = event.sender_id
+    @client.on_callback_query()
+    async def handle_magisk_version(cli, callback_query):
+        user_id        = callback_query.from_user.id
         user_directory = os.path.join(cpath, str(user_id))
-        raw_data       = event.data.decode("utf-8")
+        raw_data       = callback_query.data
 
         if raw_data == "cancel":
+            dir_to_remove = user_download_directories.get(user_id)
+            if dir_to_remove:
+                try:
+                    shutil.rmtree(dir_to_remove)
+                except Exception as e:
+                    print(f"An error occurred while deleting user directory: {e}")
+            await callback_query.message.delete()
             return
 
         if raw_data.startswith("dl:"):
@@ -472,7 +479,7 @@ def run_bot():
             version_key  = raw_data
             version_text = raw_data
 
-        await event.edit(f"You selected: {version_text}. Downloading & patching boot.img…")
+        await callback_query.message.edit_text(f"You selected: {version_text}. Downloading & patching boot.img…")
 
         boot_img_path = os.path.join(user_directory, "boot.img")
         
@@ -482,13 +489,13 @@ def run_bot():
         patched_path = await asyncio.to_thread(do_patch)
 
         if patched_path and os.path.exists(patched_path):
-            await event.edit("Repack boot.img successfully\nNow uploading, please wait…")
-            await event.respond(
-                file=patched_path,
-                message=f"✅ Boot.img patched with Magisk {version_text}"
+            await callback_query.message.edit_text("Repack boot.img successfully\nNow uploading, please wait…")
+            await callback_query.message.reply_document(
+                document=patched_path,
+                caption=f"✅ Boot.img patched with Magisk {version_text}"
             )
         else:
-            await event.edit(
+            await callback_query.message.edit_text(
                 "❌ No patched image was generated.\n\n"
                 "This may not be a valid boot.img — please try again with the original stock image."
             )
@@ -499,22 +506,20 @@ def run_bot():
         except Exception:
             pass
 
-    # ── Cancel callback ──────────────────────────
-    @client.on(events.CallbackQuery(data=b"cancel"))
-    async def handle_cancel(event):
-        user_id        = event.sender_id
-        user_directory = user_download_directories.get(user_id)
-        if user_directory:
-            try:
-                shutil.rmtree(user_directory)
-            except Exception as e:
-                print(f"An error occurred while deleting user directory: {e}")
-            await event.delete()
-        else:
-            await event.answer("This message is not for you.")
+    async def main_bot():
+        asyncio.create_task(cleanup_old_directories())
+        await client.start()
+        await idle()
+        await client.stop()
 
-    client.loop.create_task(cleanup_old_directories())
-    client.run_until_disconnected()
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            loop.create_task(main_bot())
+        else:
+            loop.run_until_complete(main_bot())
+    except RuntimeError:
+        asyncio.run(main_bot())
 
 
 # ─────────────────────────────────────────────
