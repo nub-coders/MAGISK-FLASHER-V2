@@ -41,7 +41,7 @@ pip install -r requirements.txt
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/ankitkr88588/MAGISK-FLASHER-V2
+git clone https://github.com/nub-coders/MAGISK-FLASHER-V2
 cd MAGISK-FLASHER-V2
 ```
 
