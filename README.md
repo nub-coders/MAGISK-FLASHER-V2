@@ -141,6 +141,23 @@ python3 main.py --bot
 
 ---
 
+### Docker Deployment
+
+You can also run the bot using Docker:
+
+1. **Configure Environment**:
+   ```bash
+   cp .env.sample .env
+   # Edit .env with your credentials
+   ```
+
+2. **Start with Docker Compose**:
+   ```bash
+   docker-compose up -d
+   ```
+
+---
+
 ## Project Structure
 
 ```
