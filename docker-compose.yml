@@ -1,0 +1,11 @@
+services:
+  bot:
+    build: .
+    container_name: magisk-flasher-bot
+    restart: always
+    env_file:
+      - .env
+    environment:
+      - API_ID=${API_ID}
+      - API_HASH=${API_HASH}
+      - BOT_TOKEN=${BOT_TOKEN}

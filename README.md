@@ -21,7 +21,7 @@ Magisk versions are fetched **live from GitHub Releases** — no APK files need 
 ## Requirements
 
 ```
-Python 3.10+
+Python 3.12+
 unzip  (system package)
 ```
 
@@ -141,13 +141,33 @@ python3 main.py --bot
 
 ---
 
+### Docker Deployment
+
+You can also run the bot using Docker:
+
+1. **Configure Environment**:
+   ```bash
+   cp .env.sample .env
+   # Edit .env with your credentials
+   ```
+
+2. **Start with Docker Compose**:
+   ```bash
+   docker-compose up -d
+   ```
+
+---
+
 ## Project Structure
 
 ```
 MAGISK-FLASHER-V2/
-├── main.py          # Everything: CLI, interactive menu, Telegram bot, patching core
-├── config.py        # API credentials (edit this)
-├── requirements.txt # Python dependencies
+├── main.py              # Everything: CLI, interactive menu, Telegram bot, patching core
+├── config.py            # API credentials (edit this)
+├── requirements.txt     # Python dependencies
+├── Dockerfile           # Docker configuration
+├── docker-compose.yml   # Docker Compose configuration
+├── .env.sample          # Sample environment variables
 └── README.md
 ```
 
