@@ -144,8 +144,6 @@ def patch_boot_img(boot_img_path: str, version_key: str, work_dir: str, output_p
 
     # Copy boot.img into work dir
     shutil.copy2(boot_img_path, os.path.join(work_dir, "boot.img"))
-    prev_dir = os.getcwd()
-    os.chdir(work_dir)
 
     commands = [
         "mv assets/boot_patch.sh boot_patch.sh",
@@ -163,11 +161,10 @@ def patch_boot_img(boot_img_path: str, version_key: str, work_dir: str, output_p
 
     print("  → Running Magisk boot patcher...")
     for cmd in commands:
-        subprocess.run(["sh", "-c", cmd])
+        subprocess.run(["sh", "-c", cmd], cwd=work_dir)
 
     patched    = os.path.join(work_dir, "new-boot.img")
     named      = os.path.join(work_dir, f"boot_{version_key}.img")
-    os.chdir(prev_dir)
 
     if not os.path.exists(patched):
         print("  [!] Patching failed — new-boot.img was not produced.")
@@ -359,8 +356,8 @@ def run_bot():
         )
 
     # ── Build version keyboard (shared helper) ───
-    def _build_keyboard():
-        versions = get_magisk_versions()
+    async def _build_keyboard():
+        versions = await asyncio.to_thread(get_magisk_versions)
         if not versions:
             return None, None
         keyboard = []
@@ -410,7 +407,7 @@ def run_bot():
         gg = await event.reply("Downloading file, please wait for some time")
         await client.download_media(event.document, f"{user_directory}/boot.img")
 
-        keyboard, _ = _build_keyboard()
+        keyboard, _ = await _build_keyboard()
         if not keyboard:
             await gg.delete()
             await event.respond("⚠️ Could not fetch Magisk versions from GitHub. Please try again later.")
@@ -448,7 +445,7 @@ def run_bot():
         gg = await event.respond("Downloading file, please wait for some time")
         await client.download_media(document, f"{user_directory}/boot.img")
 
-        keyboard, _ = _build_keyboard()
+        keyboard, _ = await _build_keyboard()
         if not keyboard:
             await gg.delete()
             await event.respond("⚠️ Could not fetch Magisk versions from GitHub. Please try again later.")
@@ -462,7 +459,7 @@ def run_bot():
     @client.on(events.CallbackQuery())
     async def handle_magisk_version(event):
         user_id        = event.sender_id
-        user_directory = f"{cpath}/{user_id}"
+        user_directory = os.path.join(cpath, str(user_id))
         raw_data       = event.data.decode("utf-8")
 
         if raw_data == "cancel":
@@ -470,62 +467,24 @@ def run_bot():
 
         if raw_data.startswith("dl:"):
             version_key  = raw_data[3:]
-            apk_url      = version_url_map.get(version_key)
             version_text = version_key
         else:
-            version_text = raw_data
             version_key  = raw_data
-            apk_url      = None
+            version_text = raw_data
 
         await event.edit(f"You selected: {version_text}. Downloading & patching boot.img…")
 
-        apk_file_path = os.path.join(user_directory, f"{version_text}.apk")
+        boot_img_path = os.path.join(user_directory, "boot.img")
+        
+        def do_patch():
+            return patch_boot_img(boot_img_path, version_key, user_directory, None)
+            
+        patched_path = await asyncio.to_thread(do_patch)
 
-        if apk_url:
-            try:
-                urllib.request.urlretrieve(apk_url, apk_file_path)
-            except Exception as e:
-                await event.edit(f"❌ Failed to download {version_text} from GitHub: {e}")
-                return
-        elif not os.path.exists(apk_file_path):
-            legacy = os.path.join(cpath, f"{version_text}.apk")
-            if os.path.exists(legacy):
-                apk_file_path = legacy
-            else:
-                await event.edit("❌ APK not found and no download URL available.")
-                return
-
-        subprocess.run(["unzip", "-o", apk_file_path, "-d", user_directory],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        await event.edit('Successfully unzipped MAGISK\nNow unpacking your boot.img')
-
-        os.chdir(str(user_directory))
-        commands = [
-            "mv assets/boot_patch.sh boot_patch.sh",
-            "mv assets/util_functions.sh util_functions.sh",
-            "mv assets/stub.apk stub.apk",
-            "mv lib/x86_64/libmagiskboot.so magiskboot",
-            "mv lib/armeabi-v7a/libmagisk32.so magisk32",
-            "mv lib/arm64-v8a/libmagisk64.so magisk64",
-            "mv lib/arm64-v8a/libmagiskinit.so magiskinit",
-            "rm -rf assets lib META-INF res",
-            "sed -i 's/function ui_print() {/ui_print() { echo \"$1\"/' util_functions.sh",
-            "sed -i 's/getprop/adb shell getprop/g' util_functions.sh",
-            "sh boot_patch.sh boot.img",
-        ]
-        for cmd in commands:
-            subprocess.run(["sh", "-c", cmd])
-
-        await event.edit("Repack boot.img successfully\nNow uploading, please wait…")
-
-        file_path = f"boot_{version_text}.img"
-        # boot_patch.sh always outputs new-boot.img — rename it
-        if os.path.exists("new-boot.img"):
-            os.rename("new-boot.img", file_path)
-
-        if os.path.exists(file_path):
+        if patched_path and os.path.exists(patched_path):
+            await event.edit("Repack boot.img successfully\nNow uploading, please wait…")
             await event.respond(
-                file=file_path,
+                file=patched_path,
                 message=f"✅ Boot.img patched with Magisk {version_text}"
             )
         else:
@@ -534,16 +493,11 @@ def run_bot():
                 "This may not be a valid boot.img — please try again with the original stock image."
             )
 
-        # Cleanup user dir
-        extensions_to_keep = {'.y', '.pk', '.sssion'}
-        for fn in os.listdir('.'):
-            _, ext = os.path.splitext(fn)
-            if ext not in extensions_to_keep:
-                fp = os.path.join('.', fn)
-                if os.path.isfile(fp):
-                    os.remove(fp)
-                elif os.path.isdir(fp):
-                    shutil.rmtree(fp)
+        # Cleanup immediately to save space, fallback to 1-hour auto-cleanup if this fails
+        try:
+            shutil.rmtree(user_directory, ignore_errors=True)
+        except Exception:
+            pass
 
     # ── Cancel callback ──────────────────────────
     @client.on(events.CallbackQuery(data=b"cancel"))

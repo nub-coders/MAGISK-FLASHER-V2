@@ -1,0 +1,25 @@
+{
+  "name": "Magisk Flasher Bot",
+  "description": "A Telegram bot to patch boot.img with Magisk dynamically via GitHub releases",
+  "repository": "https://github.com/ankitkr88588/MAGISK-FLASHER-V2",
+  "keywords": ["telegram", "bot", "magisk", "flasher", "boot"],
+  "env": {
+    "API_ID": {
+      "description": "Your Telegram API ID from my.telegram.org",
+      "required": true
+    },
+    "API_HASH": {
+      "description": "Your Telegram API Hash from my.telegram.org",
+      "required": true
+    },
+    "BOT_TOKEN": {
+      "description": "Your Telegram Bot Token from @BotFather",
+      "required": true
+    }
+  },
+  "buildpacks": [
+    {
+      "url": "heroku/python"
+    }
+  ]
+}
