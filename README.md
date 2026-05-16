@@ -4,7 +4,7 @@ Patch a stock `boot.img` with any Magisk version — run it interactively on you
 
 Magisk versions are fetched **live from GitHub Releases** — no APK files need to be bundled.
 
-[![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/ankitkr88588/MAGISK-FLASHER-V2)
+[![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/nub-coders/MAGISK-FLASHER-V2)
 
 
 ---
