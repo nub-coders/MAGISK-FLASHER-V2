@@ -1,5 +1,4 @@
-telethon
-FastTelethonhelper
+kurigram
 tgcrypto
-cryptg
 requests
+TgCrypto
